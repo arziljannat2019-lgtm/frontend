@@ -12,7 +12,7 @@ async function sendToServer(url, data) {
     }
 
     try {
-        await fetch("http://localhost:5000" + url, {
+        await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
@@ -25,13 +25,13 @@ async function sendToServer(url, data) {
 
 
 
-
 /******************************************************
  * GLOBAL DATA + LOCALSTORAGE SETUP
  ******************************************************/
 let tables = [];
 let shift1 = JSON.parse(localStorage.getItem("shift1") || "null");
 let shift2 = JSON.parse(localStorage.getItem("shift2") || "null");
+let dayRanges = JSON.parse(localStorage.getItem("dayRanges") || "[]");
 let editTargetId = null;
 let deleteTargetId = null;
 
@@ -203,36 +203,26 @@ function changeRate(id, rate) {
 function checkIn(id) {
     let t = tables.find(x => x.id === id);
 
-    let now = Date.now();
     t.isRunning = true;
-    t.checkinTime = now;
+    t.checkinTime = Date.now();
     t.checkoutTime = null;
     t.playSeconds = 0;
+
     t.liveAmount = 0;
     t.canteenTotal = 0;
-
-    // add history
-    t.history.push({
-        checkin: now,
-        startMs: now,
-        checkout: null,
-        endMs: null,
-        playSeconds: 0,
-        amount: 0,
-        canteenAmount: 0,
-        paid: false
-    });
-
-    // backend SAVE
-    sendToServer("/api/tables/checkin", {
-        table_id: Number(t.name.replace("Table ", ""))
-    });
 
     updateButtons(id, "running");
     runTimer(id);
     saveState();
 }
 
+sendToServer("/api/tables/checkin", {
+    table_id: id,
+    rate_type: t.selectedRate === t.frameRate ? "frame" : "century",
+    frame_rate: t.frameRate,
+    century_rate: t.centuryRate,
+    branch_code: localStorage.getItem("branch") || "R1"
+});
 
 
 /******************************************************
@@ -240,45 +230,30 @@ function checkIn(id) {
  ******************************************************/
 function checkOut(id) {
     let t = tables.find(x => x.id === id);
-    if (!t) return;
 
-    // last history entry (required)
-    let h = t.history[t.history.length - 1];
-    if (!h) {
-        alert("No running session found!");
-        return;
-    }
-
-    // stop
     t.isRunning = false;
+    t.checkoutTime = Date.now();
 
-    h.checkout = Date.now();
-    h.endMs = h.checkout;
-
-    // time calculation
-    let diff = Math.floor((h.endMs - h.startMs) / 1000);
-    h.playSeconds = diff;
-
-    // amount calculation
-    h.amount = Math.floor((diff / 3600) * t.selectedRate);
-    h.canteenAmount = t.canteenTotal || 0;
-
-    // total
-    const sessionTotal = h.amount + h.canteenAmount;
-    h.total = sessionTotal;
-
-    // SEND to server ONCE
-    sendToServer("/api/tables/checkout", {
-        table_id: Number(t.name.replace("Table ", "")),
-        total_amount: sessionTotal
+    t.history.push({
+        checkin: t.checkinTime,
+        checkout: t.checkoutTime,
+        playSeconds: t.playSeconds,
+        rate: t.selectedRate,
+        amount: t.liveAmount,
+        canteenAmount: t.canteenTotal,
+        total: t.liveAmount + t.canteenTotal,
+        paid: false
     });
 
+    updateButtons(id, "afterCheckout");
+    updateDisplay(id);
     saveState();
-    renderTables();
 }
 
-
-
+sendToServer("/api/tables/checkout", {
+    table_id: id,
+    canteen_amount: t.canteenTotal
+});
 
 
 /******************************************************
@@ -452,8 +427,6 @@ function completePayment(id) {
 
     // Mark as paid
     last.paid = true;
-    last.paymentTime = Date.now();  // ⭐ VERY IMPORTANT
-
 
     saveState();
 
@@ -468,74 +441,6 @@ function completePayment(id) {
     updateDisplay(id);
 }
 
-/******************************************************
- * 🟢 BILL POPUP FROM SESSION HISTORY
- ******************************************************/
-function openBillFromHistory(tableId, historyIndex) {
-    let t = tables.find(x => x.id === tableId);
-
-    if (!t || !t.history || !t.history[historyIndex]) {
-        alert("History record not found!");
-        return;
-    }
-
-    let h = t.history[historyIndex]; // Selected history row
-
-    let academy = localStorage.getItem("academyName") || "Rasson Snooker Academy";
-    let branch = localStorage.getItem("branch") || "Rasson 1";
-
-    // Build bill details exactly like showBill()
-    let bill = document.getElementById("billDetails");
-    bill.innerHTML = `
-    <div class="bill-print-box">
-
-        <img src="../assets/bill logo.png" class="bill-logo" style="width:200px; margin-top:5px;">
-
-        <p class="title">${academy}</p>
-        <p>${branch}</p>
-        <div class="bill-separator"></div>
-
-        <p><b>${t.name}</b></p>
-        <div class="bill-separator"></div>
-
-        <p>Check-in: ${new Date(h.checkin).toLocaleString()}</p>
-        <p>Checkout: ${new Date(h.checkout).toLocaleString()}</p>
-        <p>Play Time: ${formatSeconds(h.playSeconds)}</p>
-
-        <div class="bill-separator"></div>
-
-        <p>Amount: ${h.amount}</p>
-        <p>Canteen: ${h.canteenAmount}</p>
-        <p><b>Total Amount: ${h.total}</b></p>
-
-        <div class="bill-separator"></div>
-
-        <p>Scan for Subscribe</p>
-        <img src="../assets/qr bill.png" class="qr-bill" style="width:100px; margin-top:8px;">
-
-        <div class="bill-separator"></div>
-
-        <p>Thanks for visit</p>
-    </div>
-    `;
-
-    // Show popup
-    document.getElementById("billPopup").classList.remove("hidden");
-
-    // On PAY — mark history entry as paid
-    document.getElementById("paidBtn").onclick = () => {
-
-        h.paid = true;
-        saveState();
-
-        window.print();
-
-        document.getElementById("billPopup").classList.add("hidden");
-    };
-
-    document.getElementById("cancelBillBtn").onclick =
-        () => document.getElementById("billPopup").classList.add("hidden");
-}
 
 
 
@@ -619,76 +524,77 @@ function deleteTableConfirm() {
 }
 
 /******************************************************
- * OPEN HISTORY POPUP — FULL BACKEND + OFFLINE SUPPORT
+ * OPEN HISTORY POPUP (FULL FIX)
  ******************************************************/
-async function openHistory(id) {
+function openHistory(id) {
 
     let t = tables.find(x => x.id === id);
+
     let body = document.getElementById("historyTableBody");
     body.innerHTML = "";
 
-    // 1️⃣ SERVER HISTORY TRY FIRST
-    let branch = localStorage.getItem("branch");
-    let serverHistory = [];
-
-    try {
-        // Extract real table number from name: "Table 3" → 3
-let tableNumber = Number(t.name.replace("Table ", ""));
-
-let res = await fetch(
-    `http://localhost:5000/api/history/table?table_id=${tableNumber}&branch=${branch}`
-);
-;
-        if (res.ok) serverHistory = await res.json();
-    } catch (e) {
-        console.log("⚠ Server unavailable → using local history");
-    }
-
-    // 2️⃣ PICK SERVER OR LOCAL
-let historyList = serverHistory;
-
-
-    if (!historyList || historyList.length === 0) {
-        body.innerHTML = `<tr><td colspan="9" style="text-align:center;">No history found</td></tr>`;
-        document.getElementById("historyPopup").classList.remove("hidden");
-        return;
-    }
-
-    // 3️⃣ RENDER ROWS
-    historyList.forEach((h, index) => {
-        body.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-
-                <td>${new Date(h.checkin || h.start_time).toLocaleString()}</td>
-                <td>${h.checkout || h.end_time ? new Date(h.checkout || h.end_time).toLocaleString() : "-"}</td>
-
-                <td>${formatSeconds(h.playSeconds || h.play_seconds || 0)}</td>
-
-                <td>${h.rate_type || h.rate}</td>
-                <td>${h.amount || h.total_amount || 0}</td>
-                <td>${h.canteenAmount || h.canteen_amount || 0}</td>
-
-                <td>${h.total || (h.total_amount + h.canteen_amount)}</td>
-
-                <td>
-                    ${
-                        h.paid
-                        ? `<button class="paid-btn" disabled>PAID</button>`
-                        : `<button class="unpaid-btn" onclick="openBillFromHistory(${id}, ${index})">UNPAID</button>`
-                    }
-                </td>
-            </tr>
+    if (t.history.length === 0) {
+        body.innerHTML = `
+            <tr><td colspan="9" style="text-align:center;">No history found.</td></tr>
         `;
-    });
+    } else {
+        t.history.forEach((h, index) => {
+            body.innerHTML += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${new Date(h.checkin).toLocaleString()}</td>
+                    <td>${new Date(h.checkout).toLocaleString()}</td>
+                    <td>${formatSeconds(h.playSeconds)}</td>
+                    <td>${h.rate}</td>
+                    <td>${h.amount}</td>
+                    <td>${h.canteenAmount}</td>
+                    <td>${h.total}</td>
+                    <td>
+    ${h.paid
+        ? `<button class="paid-btn" disabled>PAID</button>`
+        : `<button class="unpaid-btn" onclick="openBillFromHistory(${id}, ${index})">UNPAID</button>`
+    }
+</td>
 
-    // 4️⃣ SHOW POPUP
+                </tr>
+            `;
+        });
+    }
+
     document.getElementById("historyPopup").classList.remove("hidden");
 
     document.getElementById("closeHistoryBtn").onclick =
         () => document.getElementById("historyPopup").classList.add("hidden");
 }
 
+function openBillFromHistory(tableId, historyIndex) {
+
+    let t = tables.find(x => x.id === tableId);
+    let h = t.history[historyIndex];
+
+    let bill = document.getElementById("billDetails");
+
+    bill.innerHTML = `
+        <p><b>${t.name}</b></p>
+        <p>Play Time: ${formatSeconds(h.playSeconds)}</p>
+        <p>Amount: ${h.amount}</p>
+        <p>Canteen: ${h.canteenAmount}</p>
+        <p><b>Total: ${h.total}</b></p>
+    `;
+
+    document.getElementById("billPopup").classList.remove("hidden");
+
+    document.getElementById("paidBtn").onclick = () => {
+        h.paid = true;
+        saveState();
+        window.print();
+        document.getElementById("billPopup").classList.add("hidden");
+        openHistory(tableId);
+    };
+
+    document.getElementById("cancelBillBtn").onclick =
+        () => document.getElementById("billPopup").classList.add("hidden");
+}
 
 
 
@@ -899,22 +805,12 @@ summaryBody.innerHTML = `
 function closeShift1() {
 
     let now = Date.now();
-    let startMs = Number(localStorage.getItem("shift1Start"));
 
-    if (!startMs) {
-        let firstEntry = Infinity;
+    // Start of shift1 = the moment the user closes shift1
+    let startMs = parseInt(localStorage.getItem("shift1Start") || now);
 
-        tables.forEach(t => {
-            t.history.forEach(h => {
-                let chk = Number(h.checkin);
-                if (isNaN(chk)) chk = new Date(h.checkin).getTime();
-                if (chk < firstEntry) firstEntry = chk;
-            });
-        });
-
-        startMs = (firstEntry !== Infinity) ? firstEntry : Date.now();
-        localStorage.setItem("shift1Start", startMs);
-    }
+    // Save this ONLY FIRST TIME
+    localStorage.setItem("shift1Start", startMs);
 
     let endMs = now;
 
@@ -938,27 +834,24 @@ function closeShift1() {
 
 
 
-
 /******************************************************
  * SHIFT 2 CLOSE (no running tables allowed)
  ******************************************************/
 function closeShift2() {
 
-    if (tables.some(t => t.isRunning)) {
-        alert("Checkout all tables before closing Shift 2!");
+    // cannot close if any table still running
+    let running = tables.some(t => t.isRunning);
+    if (running) {
+        alert("Please checkout all tables before closing Shift 2!");
         return;
     }
 
     let now = Date.now();
 
+    // Shift1 snapshot required
     let s1 = JSON.parse(localStorage.getItem("shift1") || "{}");
 
-    let startMs = Number(s1.endMs);
-    if (!startMs) {
-        alert("Shift 1 must be closed first!");
-        return;
-    }
-
+    let startMs = s1.endMs || 0;
     let endMs = now;
 
     let snap = calculateShiftSnapshot(startMs, endMs);
@@ -980,15 +873,12 @@ function closeShift2() {
 
 
 
-
-/******************************************************
- * DAY CLOSE — RESET EVERYTHING + NEW DAY START
- ******************************************************/
 /******************************************************
  * DAY CLOSE — RESET EVERYTHING + NEW DAY START
  ******************************************************/
 function closeDay() {
 
+    // LOAD SHIFT 1 & SHIFT 2 SNAPSHOTS
     let s1 = JSON.parse(localStorage.getItem("shift1") || "null");
     let s2 = JSON.parse(localStorage.getItem("shift2") || "null");
 
@@ -997,53 +887,53 @@ function closeDay() {
         return;
     }
 
-    // ⭐ COMBINED SUMMARY
+    // --------------- BUILD COMBINED SUMMARY --------------------
     let combined = {
         gameTotal: (s1.gameTotal || 0) + (s2.gameTotal || 0),
         canteenTotal: (s1.canteenTotal || 0) + (s2.canteenTotal || 0),
+
         gameCollection: (s1.gameCollection || 0) + (s2.gameCollection || 0),
         canteenCollection: (s1.canteenCollection || 0) + (s2.canteenCollection || 0),
+
         gameBalance: (s1.gameBalance || 0) + (s2.gameBalance || 0),
         canteenBalance: (s1.canteenBalance || 0) + (s2.canteenBalance || 0),
-        expenses: (s1.expenses || 0) + (s2.expenses || 0)
+
+        expenses: (s1.expenses || 0) + (s2.expenses || 0),
     };
 
+    // CLOSING CASH = TOTAL PAID – EXPENSES
     combined.closingCash =
         (combined.gameCollection + combined.canteenCollection) - combined.expenses;
 
-    // ⭐ SAVE DAY HISTORY
+    // -------- SAVE INTO DAY HISTORY LIST ------------
     let dayList = JSON.parse(localStorage.getItem("dayHistory") || "[]");
+
     dayList.push({
         date: new Date().toLocaleDateString(),
         shift1: s1,
         shift2: s2,
         combined: combined
     });
+
     localStorage.setItem("dayHistory", JSON.stringify(dayList));
 
-    // ⭐ SAVE DAY RANGE
+    // -------- SAVE DATE RANGE INTO dayRanges ----------
     let dayRanges = JSON.parse(localStorage.getItem("dayRanges") || "[]");
+
     dayRanges.push({
         start: s1.openTime,
         end: s2.closeTime
     });
+
     localStorage.setItem("dayRanges", JSON.stringify(dayRanges));
 
-    // ⭐ SEND TO BACKEND
-    sendToServer("/api/day/close", {
-        shift1: s1,
-        shift2: s2,
-        combined
-    });
-
-    // ⭐ RESET SHIFT DATA
-    localStorage.removeItem("shift1Start");
+    // -------- RESET EVERYTHING FOR A NEW DAY ----------
     localStorage.removeItem("shift1");
     localStorage.removeItem("shift2");
     localStorage.removeItem("dayStart");
-    localStorage.removeItem("expenses");
 
-    // ⭐ RESET ALL TABLES & CLEAR HISTORY
+
+    // RESET ALL TABLES
     tables.forEach(t => {
         t.isRunning = false;
         t.checkinTime = null;
@@ -1051,19 +941,17 @@ function closeDay() {
         t.playSeconds = 0;
         t.liveAmount = 0;
         t.canteenTotal = 0;
-        t.history = [];         // <---- MOST IMPORTANT
     });
 
     saveState();
     renderTables();
 
+    // RESET SHIFT BUTTON
     document.getElementById("shiftCloseBtn").innerText = "Shift 1 Close";
 
-    hidePopup("shiftSummaryPopup");
-
-    alert("Day Closed Successfully! New Day Started Fresh.");
+    hidePopup("shiftSummaryPopup");  
+    alert("Day Closed Successfully & Saved in Day History!");
 }
-
 
 
 
@@ -1080,12 +968,6 @@ function getTotalCollection() {
 
 function calculateShiftSnapshot(startTime, endTime) {
 
-    startTime = Number(startTime);
-    endTime = Number(endTime);
-
-    if (isNaN(startTime)) startTime = new Date(startTime).getTime();
-    if (isNaN(endTime)) endTime = new Date(endTime).getTime();
-
     let gameTotal = 0;
     let canteenTotal = 0;
     let gameCollection = 0;
@@ -1096,17 +978,10 @@ function calculateShiftSnapshot(startTime, endTime) {
     tables.forEach(t => {
         t.history.forEach(h => {
 
-            let hIn = Number(h.checkin);
-            let hOut = Number(h.checkout);
+            if (h.checkin >= startTime && h.checkout <= endTime) {
 
-            if (isNaN(hIn)) hIn = new Date(h.checkin).getTime();
-            if (isNaN(hOut)) hOut = new Date(h.checkout).getTime();
-
-            let g = Number(h.amount || 0);
-            let c = Number(h.canteenAmount || 0);
-
-            // ⭐ CASE 1 — PLAYED INSIDE THIS SHIFT
-            if (hIn >= startTime && hOut <= endTime) {
+                let g = Number(h.amount || 0);
+                let c = Number(h.canteenAmount || 0);
 
                 gameTotal += g;
                 canteenTotal += c;
@@ -1119,20 +994,10 @@ function calculateShiftSnapshot(startTime, endTime) {
                     canteenBalance += c;
                 }
             }
-
-            // ⭐ CASE 2 — SESSION WAS FROM PREVIOUS SHIFT BUT PAID IN THIS SHIFT
-            else if (!h.paid && h.paymentTime &&
-                     h.paymentTime >= startTime && h.paymentTime <= endTime) {
-
-                gameCollection += g;
-                canteenCollection += c;
-
-                // Balance already counted in previous shift — DO NOT add again
-            }
         });
     });
 
-    // EXPENSES
+    // LOAD shift expenses
     let expensesArr = JSON.parse(localStorage.getItem("expenses") || "[]");
     let expenses = expensesArr
         .filter(e => e.time >= startTime && e.time <= endTime)
@@ -1151,7 +1016,6 @@ function calculateShiftSnapshot(startTime, endTime) {
         closingCash
     };
 }
-
 
 
 /******************************************************
@@ -1184,23 +1048,17 @@ function openDayHistory() {
     let sel = document.getElementById("dayHistoryDateSelect");
     sel.innerHTML = "";
 
-    let dayRangesList = JSON.parse(localStorage.getItem("dayRanges") || "[]");
-
-    dayRangesList.forEach(r => {
+    dayRanges.forEach(r => {
         sel.innerHTML += `<option>${r.start} → ${r.end}</option>`;
     });
 
     document.getElementById("dayHistoryBranch").innerText =
-        "Branch: " + (localStorage.getItem("branch") || "R1");
+        "Branch: " + (localStorage.getItem("branch") || "Rasson Snooker Academy");
 
     loadDaySummary();
 
-    // ⭐ IMPORTANT: reload summary when user selects a day
-    sel.onchange = loadDaySummary;
-
     showPopup("dayHistoryPopup");
 }
-
 
 /******************************************************
  * 🟢 BUILD DAY SUMMARY (SHIFT 1 + SHIFT 2 + COMBINED)
@@ -1208,44 +1066,31 @@ function openDayHistory() {
 function loadDaySummary() {
 
     let dayList = JSON.parse(localStorage.getItem("dayHistory") || "[]");
-    if (dayList.length === 0) return;
 
-    let sel = document.getElementById("dayHistoryDateSelect");
-    let index = sel.selectedIndex;
+    if (dayList.length === 0) {
+        document.getElementById("dayCombinedBody").innerHTML =
+            "<tr><td colspan='10'>No day history found</td></tr>";
+        return;
+    }
 
-    let day = dayList[index];
+    let last = dayList[dayList.length - 1]; // latest day
 
-    let s1 = day.shift1;
-    let s2 = day.shift2;
-    let c = day.combined;
+    let s = last.combined;
 
     document.getElementById("dayCombinedBody").innerHTML = `
-        <tr><td>Shift 1</td>
-            <td>${s1.gameTotal}</td><td>${s1.canteenTotal}</td>
-            <td>${s1.gameCollection}</td><td>${s1.canteenCollection}</td>
-            <td>${s1.gameBalance}</td><td>${s1.canteenBalance}</td>
-            <td>${s1.expenses}</td><td>${s1.closingCash}</td>
-            <td>${s1.openTime}</td><td>${s1.closeTime}</td>
-        </tr>
-
-        <tr><td>Shift 2</td>
-            <td>${s2.gameTotal}</td><td>${s2.canteenTotal}</td>
-            <td>${s2.gameCollection}</td><td>${s2.canteenCollection}</td>
-            <td>${s2.gameBalance}</td><td>${s2.canteenBalance}</td>
-            <td>${s2.expenses}</td><td>${s2.closingCash}</td>
-            <td>${s2.openTime}</td><td>${s2.closeTime}</td>
-        </tr>
-
-        <tr><td>Combined</td>
-            <td>${c.gameTotal}</td><td>${c.canteenTotal}</td>
-            <td>${c.gameCollection}</td><td>${c.canteenCollection}</td>
-            <td>${c.gameBalance}</td><td>${c.canteenBalance}</td>
-            <td>${c.expenses}</td><td>${c.closingCash}</td>
-            <td>${day.date}</td><td>-</td>
+        <tr>
+            <td>${s.gameTotal}</td>
+            <td>${s.canteenTotal}</td>
+            <td>${s.gameCollection}</td>
+            <td>${s.canteenCollection}</td>
+            <td>${s.gameBalance}</td>
+            <td>${s.canteenBalance}</td>
+            <td>${s.expenses}</td>
+            <td>${s.closingCash}</td>
+            <td>${last.date}</td>
         </tr>
     `;
 }
-
 
 /******************************************************
  * 🟢 BUILD A SINGLE SUMMARY ROW
@@ -1274,8 +1119,7 @@ function openTableHistory() {
     let dateSel = document.getElementById("tableHistoryDateSelect");
     dateSel.innerHTML = "";
 
-    let dayRangesList = JSON.parse(localStorage.getItem("dayRanges") || "[]");
-    dayRangesList.forEach(r => {
+    dayRanges.forEach(r => {
         dateSel.innerHTML += `<option>${r.start} → ${r.end}</option>`;
     });
 
@@ -1287,12 +1131,10 @@ function openTableHistory() {
     document.getElementById("tableHistoryBranch").innerText =
         "Branch: " + (localStorage.getItem("branch") || "Rasson Snooker Academy");
 
-    // FIRST LOAD
     loadSelectedTableHistory();
 
-    // ⭐ FIX — UPDATE ON BOTH CHANGES
-    document.getElementById("tableHistoryTableSelect").onchange = loadSelectedTableHistory;
-    document.getElementById("tableHistoryDateSelect").onchange = loadSelectedTableHistory;
+
+
 
     showPopup("tableHistoryPopup");
 }
@@ -1307,17 +1149,8 @@ function loadSelectedTableHistory() {
 
     if (!t) return;
 
-// GET SELECTED DAY RANGE
-let daySel = document.getElementById("tableHistoryDateSelect").value;
-let [startLabel, endLabel] = daySel.split(" → ");
-
-let dayStart = new Date(startLabel).getTime();
-let dayEnd   = new Date(endLabel).getTime();
-
-// GET SHIFT SNAPSHOT
-let t1 = getTableShiftTotals(t, 1, dayStart, dayEnd);
-let t2 = getTableShiftTotals(t, 2, dayStart, dayEnd);
-
+    let t1 = getTableShiftTotals(t, 1);
+    let t2 = getTableShiftTotals(t, 2);
 
     document.getElementById("tableShift1Body").innerHTML =
         buildTableHistoryRow(t, t1);
@@ -1339,37 +1172,40 @@ let t2 = getTableShiftTotals(t, 2, dayStart, dayEnd);
 /******************************************************
  * 🟢 CALCULATE TABLE SUMMARY FOR SPECIFIC SHIFT
  ******************************************************/
-function getTableShiftTotals(t, shiftNum, dayStart, dayEnd) {
+function getTableShiftTotals(t, shiftNum) {
 
+    // Load shift snapshot
     let s = JSON.parse(localStorage.getItem(`shift${shiftNum}`) || "{}");
 
-    if (!s.startMs || !s.endMs)
+    // If snapshot missing → no data
+    if (!s.startMs || !s.endMs) {
         return { time: 0, game: 0, canteen: 0, total: 0 };
+    }
 
-    let start = Number(s.startMs);
-    let end   = Number(s.endMs);
+    // Correct time range (MILLISECOND timestamps)
+    let start = s.startMs;
+    let end = s.endMs;
 
-    let time = 0, game = 0, canteen = 0, total = 0;
+    let total = 0;
+    let game = 0;
+    let canteen = 0;
+    let time = 0;
 
+    // Loop through table history
     t.history.forEach(h => {
 
-        let hIn = Number(h.checkin);
-        let hOut = Number(h.checkout);
+        // Only include entries inside shift time range
+        if (h.checkin >= start && h.checkout <= end) {
 
-        if (isNaN(hIn)) hIn = new Date(h.checkin).getTime();
-        if (isNaN(hOut)) hOut = new Date(h.checkout).getTime();
-
-        if (hIn >= start && hOut <= end) {
-            time += Number(h.playSeconds || 0);
+            total += Number(h.total || 0);
             game += Number(h.amount || 0);
             canteen += Number(h.canteenAmount || 0);
-            total += Number(h.total || 0);
+            time += Number(h.playSeconds || 0);
         }
     });
 
-    return { time, game, canteen, total };
+    return { total, game, canteen, time };
 }
-
 
 
 /******************************************************
@@ -1443,20 +1279,21 @@ function renderHistoryPage() {
                 <td>${h.amount}</td>
                 <td>${h.canteenAmount}</td>
                 <td>${h.total}</td>
-                <td>
-                    ${
-                        h.paid
-                        ? "<button disabled>PAID</button>"
-                        : `<button onclick="openBillFromHistory(${tableId}, ${start + index})">UNPAID</button>`
-                    }
-                </td>
+<td>
+${h.paid
+    ? `<button class="paid-btn" disabled>PAID</button>`
+    : `<button class="unpaid-btn" onclick="openBillFromHistory(${tableId}, ${start + index})">UNPAID</button>`
+}
+</td>
+
+
             </tr>
         `;
     });
 
+    // Update current page number display
     document.getElementById("historyPageNumber").innerText = historyPage;
 }
-
 
 /******************************************************
  * 🟢 RESTORE TIMERS ON PAGE LOAD
@@ -1474,40 +1311,6 @@ function restoreTimers() {
     });
 }
 
-
-// -----------------------------------------------
-// SHIFT BACKEND SYNC FUNCTION
-// -----------------------------------------------
-async function syncShiftToServer(shiftObj) {
-    try {
-        await fetch("http://localhost:5000/api/shifts/close", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(shiftObj)
-        });
-    } catch (err) {
-        console.log("Shift sync failed → saving offline");
-
-        pendingQueue.push({
-            url: "/api/shifts/close",
-            data: shiftObj
-        });
-
-        saveQueue();
-    }
-}
-
-async function loadServerHistory(id) {
-    let branch = localStorage.getItem("branch");
-    try {
-        let res = await fetch(`http://localhost:5000/api/history/table?table_id=${id}&branch=${branch}`);
-        return await res.json();
-    } catch {
-        return [];
-    }
-}
-
-
 // ===============================================
 // AUTO SYNC OFFLINE QUEUE EVERY 5 SEC
 // ===============================================
@@ -1520,7 +1323,7 @@ async function syncPending() {
 
     for (let job of copy) {
         try {
-            await fetch("http://localhost:5000" + job.url, {
+            await fetch(job.url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(job.data)
@@ -1532,9 +1335,6 @@ async function syncPending() {
 
     saveQueue();
 }
-
-
-
 
 // Run sync every 5 seconds
 setInterval(syncPending, 5000);

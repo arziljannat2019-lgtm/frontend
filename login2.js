@@ -13,7 +13,9 @@ function login() {
     }
 
     // CALL BACKEND LOGIN API
-fetch("https://snooker-backend-grx0.onrender.com/api/auth/login", {
+fetch("https://snooker-backend-grx6.onrender.com/api/auth/login", {
+
+
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ username, password })
