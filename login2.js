@@ -1,50 +1,35 @@
-function login() {
+async function login() {
+  const username = document.getElementById("username").value;
+  const password = document.getElementById("password").value;
 
-    // READ VALUES FROM YOUR HTML FIELDS
-    let branch = document.getElementById("branchCode").value.trim();
-    let username = document.getElementById("loginUserId").value.trim();
-    let password = document.getElementById("loginPassword").value.trim();
-    let errorBox = document.getElementById("errorMsg");
+  if (!username || !password) {
+    alert("Username & password required");
+    return;
+  }
 
-    // VALIDATION
-    if (!branch || !username || !password) {
-        errorBox.textContent = "Please fill all fields.";
-        return;
+  try {
+    const res = await fetch(
+      "https://snooker-backend-grx0.onrender.com/api/auth/login",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, password })
+      }
+    );
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Login successful: " + data.role);
+      // redirect example
+      // window.location.href = "dashboard.html";
+    } else {
+      alert("Invalid login");
     }
-
-    // CALL BACKEND LOGIN API
-fetch("https://snooker-backend-grx6.onrender.com/api/auth/login", {
-
-
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ username, password })
-})
-
-    .then(res => res.json())
-    .then(data => {
-
-        if (!data.success) {
-            errorBox.textContent = "Invalid User ID or Password.";
-            return;
-        }
-
-        // SAVE ROLE
-        localStorage.setItem("role", data.role);
-
-        // 🔥 BRANCH LOGIC (YOUR FINAL REQUIREMENT)
-        // Supervisor / Frontdesk / Manager / Admin
-        // ALL choose branch at login
-        localStorage.setItem("branch", branch);
-
-        // SAVE TOKEN
-        localStorage.setItem("token", data.token);
-
-        // REDIRECT
-        window.location.href = "html/dashboard.html";
-    })
-    .catch(err => {
-        console.error(err);
-        errorBox.textContent = "Server Error, please try again.";
-    });
+  } catch (err) {
+    console.error(err);
+    alert("Server error");
+  }
 }
