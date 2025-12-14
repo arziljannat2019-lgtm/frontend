@@ -393,7 +393,7 @@ bill.innerHTML = `
      <div class="bill-separator"></div>
 
     <p> Scan for Subscribe</p>
-    <img src="../assets/qr bill.png" class="qr bill" style="width:100px; margin-top:8px;">
+    <img src="../assets/qr-bill.png" class="qr-bill" style="width:100px; margin-top:8px;">
 
     <div class="bill-separator"></div>
 
