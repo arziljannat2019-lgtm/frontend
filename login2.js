@@ -1,9 +1,10 @@
 async function login() {
-  const username = document.getElementById("username").value;
-  const password = document.getElementById("password").value;
+  const branchCode = document.getElementById("branchCode").value;
+  const username   = document.getElementById("loginUserId").value;
+  const password   = document.getElementById("loginPassword").value;
 
-  if (!username || !password) {
-    alert("Username & password required");
+  if (!branchCode || !username || !password) {
+    document.getElementById("errorMsg").innerText = "All fields required";
     return;
   }
 
@@ -15,21 +16,24 @@ async function login() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({
+          username,
+          password,
+          branchCode
+        })
       }
     );
 
     const data = await res.json();
 
     if (data.success) {
-      alert("Login successful: " + data.role);
-      // redirect example
+      alert("Login successful (" + data.role + ")");
       // window.location.href = "dashboard.html";
     } else {
-      alert("Invalid login");
+      document.getElementById("errorMsg").innerText = "Invalid login";
     }
   } catch (err) {
     console.error(err);
-    alert("Server error");
+    document.getElementById("errorMsg").innerText = "Server error";
   }
 }
