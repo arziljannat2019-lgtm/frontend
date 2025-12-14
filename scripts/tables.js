@@ -371,7 +371,7 @@ function showBill(id) {
 bill.innerHTML = `
 <div class="bill-print-box">
 
-    <img src="../assets/bill logo.png" class="bill-logo" style="width:200px; margin-top:5px;">
+    <img src="../assets/bill-logo.png" class="bill-logo" style="width:200px; margin-top:5px;">
 
     <p class="title">${academy}</p>
     <p>${branch}</p>
@@ -393,7 +393,7 @@ bill.innerHTML = `
      <div class="bill-separator"></div>
 
     <p> Scan for Subscribe</p>
-    <img src="../assets/qr-bill.png" class="qr-bill" style="width:100px; margin-top:8px;">
+    <img src="../assets/QR-bill.png" class="qr-bill" style="width:100px; margin-top:8px;">
 
     <div class="bill-separator"></div>
 
