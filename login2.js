@@ -29,7 +29,8 @@ async function login() {
       localStorage.setItem("branchCode", branchCode);
 
       // 👉 redirect
-      window.location.href = "dashboard.html";
+      window.location.href = "html/dashboard.html";
+
     } else {
       document.getElementById("errorMsg").innerText = "Invalid login";
     }
