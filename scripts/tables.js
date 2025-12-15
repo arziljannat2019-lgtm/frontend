@@ -999,6 +999,24 @@ function closeDay() {
 
     hidePopup("shiftSummaryPopup");  
     alert("Day Closed Successfully & Saved in Day History!");
+
+    // ✅ BACKEND DAY SAVE (EXACT JAGAH)
+sendToServer("https://snooker-backend-grx6.onrender.com/api/day/close", {
+  day_date: new Date().toISOString().slice(0, 10),
+  branch_code: localStorage.getItem("branch") || "R1",
+
+  game_total: combined.gameTotal,
+  canteen_total: combined.canteenTotal,
+
+  game_collection: combined.gameCollection,
+  canteen_collection: combined.canteenCollection,
+
+  expenses: combined.expenses,
+  closing_cash: combined.closingCash
+});
+
+
+
 }
 
 
