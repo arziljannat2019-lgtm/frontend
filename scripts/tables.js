@@ -214,15 +214,19 @@ function checkIn(id) {
     updateButtons(id, "running");
     runTimer(id);
     saveState();
-}
 
-sendToServer("/api/tables/checkin", {
+sendToServer("https://snooker-backend-grx6.onrender.com/api/tables/start", {
     table_id: id,
-    rate_type: t.selectedRate === t.frameRate ? "frame" : "century",
+    play_type: t.selectedRate === t.frameRate ? "frame" : "century",
     frame_rate: t.frameRate,
     century_rate: t.centuryRate,
     branch_code: localStorage.getItem("branch") || "R1"
 });
+
+
+}
+
+
 
 
 /******************************************************
@@ -248,12 +252,15 @@ function checkOut(id) {
     updateButtons(id, "afterCheckout");
     updateDisplay(id);
     saveState();
-}
 
-sendToServer("/api/tables/checkout", {
+sendToServer("https://snooker-backend-grx6.onrender.com/api/tables/stop", {
     table_id: id,
     canteen_amount: t.canteenTotal
 });
+
+}
+
+
 
 
 /******************************************************
@@ -829,6 +836,27 @@ function closeShift1() {
 
     document.getElementById("shiftCloseBtn").innerText = "Shift 2 Close";
     hidePopup("shiftSummaryPopup");
+
+    // ✅ BACKEND SHIFT SAVE (EXACT JAGAH)
+sendToServer("https://snooker-backend-grx6.onrender.com/api/shifts/close", {
+    shift_number: 1,
+    branch_code: localStorage.getItem("branch") || "R1",
+
+    open_time: shift1.openTime,
+    close_time: shift1.closeTime,
+
+    game_total: snap.gameTotal,
+    canteen_total: snap.canteenTotal,
+
+    game_collection: snap.gameCollection,
+    canteen_collection: snap.canteenCollection,
+
+    expenses: snap.expenses,
+    closing_cash: snap.closingCash
+});
+
+
+
 }
 
 
@@ -869,6 +897,26 @@ function closeShift2() {
 
     document.getElementById("shiftCloseBtn").innerText = "Day Close";
     hidePopup("shiftSummaryPopup");
+
+    // ✅ BACKEND SHIFT SAVE (EXACT JAGAH)
+sendToServer("https://snooker-backend-grx6.onrender.com/api/shifts/close", {
+    shift_number: 2,
+    branch_code: localStorage.getItem("branch") || "R1",
+
+    open_time: shift2.openTime,
+    close_time: shift2.closeTime,
+
+    game_total: snap.gameTotal,
+    canteen_total: snap.canteenTotal,
+
+    game_collection: snap.gameCollection,
+    canteen_collection: snap.canteenCollection,
+
+    expenses: snap.expenses,
+    closing_cash: snap.closingCash
+});
+
+
 }
 
 
